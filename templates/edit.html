@@ -1,0 +1,434 @@
+{% extends 'main_template.html' %}
+{% load static %}
+
+{% block head %}
+<style>
+    .document {
+        border: 1px solid #222222;
+        margin: 2px;
+        min-height: 200px;
+    }
+
+    .document-element:hover {
+        box-shadow: 1px 0 0 #222222, -1px 0 0 #222222, 0 1px 0 #222222, 0 -1px 0 #222222;
+    }
+
+    .document:hover {
+        box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+    }
+
+    .left-sidebar {
+        align-items: center;
+    }
+
+    .left-sidebar > * {
+        text-align: center;
+    }
+
+    .choose-element {
+        cursor: grab;
+    }
+
+    .selected {
+        background-color: rgba(100, 100, 100, 0.2);
+    }
+
+    div {
+        padding: 2px;
+    }
+
+    .shadow-element {
+        width: 80px;
+        height: 10px;
+        background-color: #888888;
+    }
+
+    .button-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
+        text-align: center;
+        border-radius: 4px;
+        color: white;
+        background-color: #111111;
+        cursor: pointer;
+    }
+
+    .icons > * {
+        margin: 4px;
+    }
+
+    .button-icon:hover {
+        background-color: #222222;
+    }
+    .input-textarea {
+        display: block;
+        width: 100%;
+        height: fit-content;
+    }
+    .input {
+        display: block;
+        width: 100%;
+    }
+</style>
+{% endblock head %}
+
+{% block body %}
+<script src="{% static 'jscolor.js' %}"></script>
+<div class="main">
+    <div class="row">
+        <div class="col-3">
+            <div class="left-sidebar">
+                <h1 class="choose-element" draggable="true" ondragend="dragEnd(event)" ondragstart="drag(event)">Title 1</h1>
+                <h2 class="choose-element" draggable="true" ondragend="dragEnd(event)" ondragstart="drag(event)">Title 2</h2>
+                <p class="choose-element" draggable="true" ondragend="dragEnd(event)" ondragstart="drag(event)">Paragraph</p>
+                <div class="choose-element no-text" draggable="true" ondragend="dragEnd(event)" ondragstart="drag(event)"><h1>Container</h1></div>
+            </div>
+        </div>
+        <div class="col-6">
+            <div class="document-element document" ondragover="dragOver(event)" ondrop="drop(event)"></div>
+        </div>
+        <div class="col-3">
+            <h2>Selected element</h2>
+            <h3 id="selected-name"></h3>
+            <button onclick="selectParentFromSelected()">Select parent element</button>
+            <div class="d-flex icons">
+                <i class="bi bi-arrow-up button-icon" id="a" onclick="moveUpSelected()"></i>
+                <i class="bi bi-arrow-down button-icon" onclick="moveDownSelected()"></i>
+                <i class="bi bi-trash button-icon" onclick="deleteSelected()"></i>
+            </div>
+            <div id="optional-inputs">
+                <div id="input-contents" hidden>
+                    <label for="input-textarea-contents">Contents</label>
+                    <textarea id="input-textarea-contents" class="input-textarea" onchange="changeSelectedInnerText(this)"></textarea>
+                </div>
+                <div id="input-margins-container" hidden>
+                    <label for="input-margins">Margin</label>
+                    <input id="input-margins" class="input" onchange="changeCSSProperty(this.value, 'margin')">
+                    <label for="input-paddings">Padding</label>
+                    <input id="input-paddings" class="input" onchange="changeCSSProperty(this.value, 'padding')">
+                </div>
+                <div id="input-css-container" hidden>
+                    <label for="input-textarea-css">All styles</label>
+                    <textarea id="input-textarea-css" class="input-textarea" onchange="changeSelectedCSS(this)"></textarea>
+                </div>
+                <div id="input-colors-container" hidden>
+                    <label for="input-color">Color</label>
+                    <input id="input-color" data-jscolor="{}" class="input" onchange="changeCSSProperty(this.value, 'color')">
+                    <label for="input-bg-color">Background color</label>
+                    <input id="input-bg-color" data-jscolor="{}" class="input" onchange="changeCSSProperty(this.value, 'background-color')">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var shadowElement = document.createElement("h1");
+    shadowElement.className = "shadow-element";
+    const containerTypes = ["DIV"];
+    var dropped = false;
+    var selectedElement = null;
+
+    // ------------------------------------ Optional inputs ---------------------------------------------
+
+    const inputFieldContainers = { // which input field container to show when selecting certain node
+        "H1": [ "input-contents", "input-css-container", "input-margins-container", "input-colors-container" ],
+        "H2": [ "input-contents", "input-css-container", "input-margins-container", "input-colors-container" ],
+        "P": [ "input-contents", "input-css-container", "input-margins-container", "input-colors-container" ],
+        "DIV": [ "input-css-container", "input-margins-container", "input-colors-container" ],
+    }
+
+    function hideInputs() {
+        let optionalInputs = document.getElementById("optional-inputs");
+        Array.from(optionalInputs.children).forEach(child => {
+            child.setAttribute("hidden", "true");
+        });
+    }
+
+    function fillInputsForElement(el) {
+        if (inputFieldContainers.hasOwnProperty(el.nodeName)) {
+            inputFieldContainers[el.nodeName].forEach(id => {
+                let inputEl = document.getElementById(id);
+                inputEl.removeAttribute("hidden");
+                fillInputFunctions[id]();
+            });
+        }
+    }
+
+    function changeSelectedInnerText(fromEl) {
+        if (selectedElement === null) {return;}
+        selectedElement.innerHTML = fromEl.value;
+    }
+
+    function changeSelectedCSS(fromEl) {
+        if (selectedElement === null) {return;}
+        selectedElement.style = document.createElement(selectedElement.nodeName).style 
+        // clear style to prevent keeping styles that were erased
+        let cssObj = CSSStrToObj(fromEl.value);
+        for (let name of Object.keys(cssObj)) {
+            selectedElement.style[name] = cssObj[name];
+        }
+        fillInputsForElement(selectedElement);
+    }
+
+    function changeCSSProperty(toValue, valueName) {
+        if (selectedElement === null) {return;}
+        selectedElement.style[valueName] = toValue;
+        fillInputsForElement(selectedElement);
+    }
+
+    // ------------------------------------ Control Panel -----------------------------------------------
+
+    function moveUpSelected() {
+        if (selectedElement === null) {return;}
+        let parent = selectedElement.parentNode;
+        let selectedIndex = [...parent.children].indexOf(selectedElement);
+
+        if (selectedIndex === 0) {return;}
+        parent.removeChild(selectedElement);
+        parent.insertBefore(selectedElement, parent.children[selectedIndex - 1]);
+    }
+
+    function moveDownSelected() {
+        if (selectedElement === null) {return;}
+        let parent = selectedElement.parentNode;
+        let selectedIndex = [...parent.children].indexOf(selectedElement);
+
+        if (selectedIndex === parent.children.length - 1) {return;}
+        parent.removeChild(selectedElement);
+        parent.insertBefore(selectedElement, parent.children[selectedIndex + 1]);
+    }
+
+    function deleteSelected() {
+        if (selectedElement === null) {return;}
+        let parentContainer = selectedElement.parentNode;
+        removeDocElement(selectedElement);
+        setContainerInnerIfEmpty(parentContainer);
+    }
+
+    // ------------------------------------ Filling optional inputs -------------------------------------
+
+    const fillInputFunctions = {
+        "input-contents": fillInputContentsForSelected,
+        "input-css-container": fillAllCSS,
+        "input-margins-container": () => {fillMargins(); fillPaddings();},
+        "input-colors-container": () => {fillColor(); fillBgColor();}
+    }
+
+    function fillInputContentsForSelected() {
+        if (selectedElement === null) {return;}
+        let inputContentsEl = document.getElementById("input-textarea-contents");
+        inputContentsEl.value = selectedElement.innerHTML;
+    }
+
+    function fillAllCSS() {
+        if (selectedElement === null) {return;}
+        let noShow = [0, "0", "", null];
+        let allCssEl = document.getElementById("input-textarea-css");
+        let elStyle = selectedElement.style;
+        let styleStr = "";
+        for (const [key, value] of Object.entries(elStyle)) {
+            if (noShow.includes(value)) {continue;}
+            styleStr += (`${value}: ${elStyle[value]};\n`)
+        }
+        allCssEl.value = styleStr;
+    }
+
+    function fillMargins() {
+        if (selectedElement === null) {return;}
+        let inputMarginsEl = document.getElementById("input-margins");
+        let elStyle = selectedElement.style;
+        let styleSrt = "";
+        ["margin-top", "margin-right", "margin-bottom", "margin-left"].forEach(marginType => {
+            styleSrt += `${elStyle[marginType] || 0} `;
+        });
+        inputMarginsEl.value = styleSrt;
+    }
+
+    function fillPaddings() {
+        if (selectedElement === null) {return;}
+        let inputMarginsEl = document.getElementById("input-paddings");
+        let elStyle = selectedElement.style;
+        let styleSrt = "";
+        ["padding-top", "padding-right", "padding-bottom", "padding-left"].forEach(marginType => {
+            styleSrt += `${elStyle[marginType] || 0} `;
+        });
+        inputMarginsEl.value = styleSrt;
+    }
+
+    function fillColor() {
+        if (selectedElement === null) {return;}
+        let inputColorEl = document.getElementById("input-color");
+        inputColorEl.value = selectedElement.style["color"];
+    }
+
+    function fillBgColor() {
+        if (selectedElement === null) {return;}
+        let inputBgColorEl = document.getElementById("input-bg-color");
+        inputBgColorEl.value = selectedElement.style["background-color"];
+    }
+
+    // -------------------------------------- Misc ------------------------------------------------------
+
+    function CSSStrToObj(string) {
+        let cssObj = {}
+        let lines = string.split("\n");
+        for (let i = 0; i < lines.length; i++) {
+            let styleStr = lines[i];
+            if (styleStr.split(" ").length - 1 == styleStr.length) {continue;} // if contains onlu spaces, skip
+            if (styleStr[styleStr.length - 1] === ";") { // if the last symbol is ;, remove it
+                styleStr = styleStr.substring(0, styleStr.length - 1);
+            }
+
+            let name, value;
+            [ name, value ] = styleStr.split(":");
+            if (name === undefined || value === undefined) {continue}
+            cssObj[name] = value.trim();
+        }
+        return cssObj;
+    }
+
+    function setContainerInnerIfEmpty(el, text="Container") {
+        if (el.classList.contains("document")) {return;}
+        if (el.children.length === 0) {
+            el.innerHTML = text;
+            el.classList.add("selectable");
+        }
+    }
+
+    function removeShadowElement() {
+        if (shadowElement.parentNode !== null) {
+            shadowElement.parentNode.removeChild(shadowElement);
+        }
+    }
+
+    function unselectElement(el) {
+        if (selectedElement !== null) {
+            selectedElement.classList.remove("selected");
+        }
+
+        let nameEl = document.getElementById("selected-name");
+        nameEl.innerHTML = "";
+        selectedElement = null;
+        hideInputs();
+    }
+
+    function selectElement(el, checkSelectable=true) {
+        if (!el.classList.contains("selectable") && checkSelectable) {
+            return;
+        }
+        if (selectedElement !== null) {
+            selectedElement.classList.remove("selected");
+        }
+        selectedElement = el;
+        el.classList.add("selected");
+        fillInputsForElement(el);
+        bindSelected(el);
+    }
+
+    function selectParentFromSelected() {
+        if (selectedElement === null) {
+            return;
+        }
+
+        selectParent(selectedElement);
+    }
+
+    function selectParent(el) {
+        let parent = el.parentElement;
+        if (parent.classList.contains("document")) {
+            return;
+        }
+        unselectElement(el);
+        selectElement(parent, checkSelectable=false);
+    }
+
+    function bindSelected(el) {
+        let nameEl = document.getElementById("selected-name");
+        nameEl.innerHTML = "... -> " + el.parentNode.nodeName + " -> " + el.nodeName;
+    }
+
+    function removeDocElement(el) {
+        if (el.classList.contains("document")) {return;}
+        if (el === selectedElement) {
+            unselectElement(el);
+        }
+        if (el.classList.contains("document-element")) 
+        {
+            el.parentNode.removeChild(el);
+        } 
+    }
+
+    function select(el) {
+        if (selectedElement === el) {
+            unselectElement(el);
+        } else {
+            selectElement(el);
+        }
+    }
+
+    function createDocElement(type) {
+        let el = document.createElement(type);
+        el.className = "document-element selectable";
+        el.addEventListener("click", () => select(el));
+        
+        return el;
+    }
+
+    function dragEnd(ev) {
+        removeShadowElement();
+    }
+
+    function drag(ev) {
+        ev.dataTransfer.setData("type", ev.target.nodeName);
+        ev.dataTransfer.setData("inner", ev.target.innerText);
+        dropped = false;
+    }
+
+    function dragOver(ev) {
+        ev.preventDefault();
+        let target = ev.target;
+
+        removeShadowElement();
+
+        if (!dropped) {
+            if (containerTypes.includes(ev.target.nodeName)) {
+                target.appendChild(shadowElement);
+            } else {
+                target.after(shadowElement);
+            }
+            
+        }
+    }
+
+    function clearInnerTextIfNoChildren(el) {
+        if (el.children.length <= 1) {
+            el.innerHTML = "";
+        }
+    }
+
+    function drop(ev) {
+
+        let target = ev.target;
+        dropped = true;
+        let insertBefore = null;
+        if (containerTypes.includes(ev.target.nodeName)) {
+            clearInnerTextIfNoChildren(target);
+        }
+
+        if (!target.classList.contains("document-element")) {return;}
+        ev.preventDefault();
+        var type = ev.dataTransfer.getData("type");
+        let el = createDocElement(type);
+        el.innerText = ev.dataTransfer.getData("inner");
+        if (containerTypes.includes(ev.target.nodeName)) {
+            target.classList.remove("selectable");
+            target.appendChild(el);
+        } else {
+            target.after(el);
+        }
+        
+    }
+</script>
+{% endblock body %}
